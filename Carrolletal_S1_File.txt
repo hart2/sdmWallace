@@ -1,0 +1,237 @@
+###Supplementary Methods S1. R code to calculate climatic and biotic velocity, from Carroll et al. Biotic and climatic velocity identify contrasting areas of vulnerability to climate change.
+###Calculate forward climatic velocity
+
+library(MASS)
+library(SDMTools)
+library(raster)
+library(yaImpute)
+
+##Given a set of locations with pca scores for current (curpcascores) and future (futpcascores) climate data, and the minimum and maximum values on the various PCA axes.
+
+bin.width<-z       ##set the width of a bin (in which climate is considered "similar")
+b.adj<-seq(-0.5*bin.width,0.5*bin.width,length.out=100)	# Make the per-loop bin adjustment 
+
+b1<-seq(min1,max1,by=2)     # Make bins for PCA axis 1
+b2<-seq(min2,max2,by=2)     # Make bins for PCA axis 2, etc.
+b3<-seq(min3,max3,by=2)      
+b4<-seq(min4,max4,by=2)
+b5<-seq(min5,max5,by=2)
+
+x  <- climateraster$x                             # vector of grid cell x coordinates
+y  <- climateraster$y                             # vector of grid cell y coordinates
+
+velstack<-rasterFromXYZ(cbind(climateraster$x,climateraster$y,climateraster$var.1))
+velstack<-addLayer(velstack,velstack)
+velstack<-dropLayer(velstack,c(1,2))
+
+
+for(i in 1:length(b.adj)){		
+	cclassespc1<- findInterval(curpcascores[,1],b1+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc2<- findInterval(curpcascores[,2],b2+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc3<- findInterval(curpcascores[,3],b3+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc4<- findInterval(curpcascores[,4],b4+b.adj[i]) 
+	cclassespc5<- findInterval(curpcascores[,5],b5+b.adj[i]) 
+
+	fclassespc1<- findInterval(futpcascores[,1],b1+b.adj[i])   
+	fclassespc2<- findInterval(futpcascores[,2],b2+b.adj[i])   
+	fclassespc3<- findInterval(futpcascores[,3],b3+b.adj[i])   
+	fclassespc4<- findInterval(futpcascores[,4],b4+b.adj[i])
+	fclassespc5<- findInterval(futpcascores[,5],b5+b.adj[i])
+	
+	cbins<-cbind(x,y,cclassespc1,cclassespc2,cclassespc3,cclassespc4,cclassespc5)
+	fbins<-cbind(x,y,fclassespc1,fclassespc2,fclassespc3,fclassespc4,fclassespc5)
+	uniquec<-unique(cbins[,3:7])
+	uniquec<-cbind(seq(1,length(uniquec[,1]),1),uniquec)
+	cbins<-merge(cbins,uniquec,by.x=c(3:7),by.y=c(2:6))
+	fbins<-merge(fbins,uniquec,by.x=c(3:7),by.y=c(2:6))
+
+	cbins<-cbins[,c(8,6,7)]
+	fbins<-fbins[,c(8,6,7)]
+	cbins<-cbind(seq(1,length(cbins[,1]),1),cbins)
+	fbins<-cbind(seq(1,length(fbins[,1]),1),fbins)
+	names(cbins)<-c("ID","bin","x","y")
+	names(fbins)<-c("ID","bin","x","y")
+
+	## kNN yaIMpute LOOP ##
+	u <- uniquec[order(uniquec[,1]),1]
+	d <- data.frame(matrix(nrow=0,ncol=4))   # Empty matrix for distances
+	names(d)<-c("ID","x","y","dist")
+	for(j in u){
+		p.xy <- cbins[which(cbins[,2]==j),c(1,3,4)]
+		f.xy <- fbins[which(fbins[,2]==j),c(1,3,4)]
+		if(nrow(f.xy)>0&nrow(p.xy)>0){
+		  d.ann <- as.data.frame(ann(
+		    as.matrix(f.xy[,-1]),
+		    as.matrix(p.xy[,-1]),
+		    k=1, verbose=F)$knnIndexDist)
+		  d1 <- cbind(p.xy, round(sqrt(d.ann[,2])))
+		} else {
+		  d1 <- cbind(p.xy, rep(-9999,nrow(p.xy)))
+		}
+		names(d1)<-names(d)
+		d<-rbind(d,d1)
+	}
+	d<-d[order(d[,1]),]
+	vel<-rasterFromXYZ(d[,c(2,3,4)])		
+	velstack<-addLayer(velstack,vel)
+}
+
+
+velstacktmp<-velstack
+fun <- function(x) { x[x==-9999] <-NA; return(x) }
+velstacktmp<-calc(velstacktmp,fun=fun)
+velstackmean<-calc(velstacktmp,fun=mean,na.rm=TRUE)
+velstackmean<-velstackmean/(1000*110) # convert the values from distance (meters) to velocity (km/yr) (here years = 110)
+writeRaster(velstackmean,file="fwclimatevelocity.asc")
+
+###Calculate backward climatic velocity
+
+for(i in 1:length(b.adj)){		
+	cclassespc1<- findInterval(curpcascores[,1],b1+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc2<- findInterval(curpcascores[,2],b2+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc3<- findInterval(curpcascores[,3],b3+b.adj[i])   # convert PC1 to bins via breaks
+	cclassespc4<- findInterval(curpcascores[,4],b4+b.adj[i]) 
+	cclassespc5<- findInterval(curpcascores[,5],b5+b.adj[i]) 
+
+	fclassespc1<- findInterval(futpcascores[,1],b1+b.adj[i])   
+	fclassespc2<- findInterval(futpcascores[,2],b2+b.adj[i])   
+	fclassespc3<- findInterval(futpcascores[,3],b3+b.adj[i])   
+	fclassespc4<- findInterval(futpcascores[,4],b4+b.adj[i])
+	fclassespc5<- findInterval(futpcascores[,5],b5+b.adj[i])
+	
+	cbins<-cbind(x,y,cclassespc1,cclassespc2,cclassespc3,cclassespc4,cclassespc5)
+	fbins<-cbind(x,y,fclassespc1,fclassespc2,fclassespc3,fclassespc4,fclassespc5)
+	uniquef<-unique(fbins[,3:7])
+	uniquef<-cbind(seq(1,length(uniquef[,1]),1),uniquef)
+	cbins<-merge(cbins,uniquef,by.x=c(3:7),by.y=c(2:6))
+	fbins<-merge(fbins,uniquef,by.x=c(3:7),by.y=c(2:6))
+
+	cbins<-cbins[,c(8,6,7)]
+	fbins<-fbins[,c(8,6,7)]
+	cbins<-cbind(seq(1,length(cbins[,1]),1),cbins)
+	fbins<-cbind(seq(1,length(fbins[,1]),1),fbins)
+	names(cbins)<-c("ID","bin","x","y")
+	names(fbins)<-c("ID","bin","x","y")
+
+	## kNN yaIMpute LOOP ##
+	u <- uniquef[order(uniquef[,1]),1]
+	d <- data.frame(matrix(nrow=0,ncol=4))   # Empty matrix for distances
+	names(d)<-c("ID","x","y","dist")
+	for(i in u){
+		p.xy <- cbins[which(cbins[,2]==i),c(1,3,4)]
+		f.xy <- fbins[which(fbins[,2]==i),c(1,3,4)]
+		if (nrow(f.xy)>0&nrow(p.xy)>0){
+			 d.ann <- as.data.frame(ann(
+			   as.matrix(p.xy[,-1]),
+			   as.matrix(f.xy[,-1]),
+			   k=1, verbose=F)$knnIndexDist)
+			 d1 <- cbind(f.xy, round(sqrt(d.ann[,2])))
+			} else {
+			 d1 <- cbind(f.xy, rep(-9999,nrow(f.xy)))
+			}
+			 names(d1)<-names(d)
+			d<-rbind(d,d1)
+	      }
+		d<-d[order(d[,1]),]
+		vel<-rasterFromXYZ(d[,c(2,3,4)])		
+		velstack<-addLayer(velstack,vel)
+	}	
+	
+velstacktmp<-velstack
+fun <- function(x) { x[x==-9999] <-NA; return(x) }
+velstacktmp<-calc(velstacktmp,fun=fun)
+velstackmean<-calc(velstacktmp,fun=mean,na.rm=TRUE)
+velstackmean<-velstackmean/(1000*110) # convert the values from distance (meters) to velocity (km/yr) (here years = 110)
+writeRaster(velstackmean,file="bwclimatevelocity.asc")
+
+###Calculate forward biotic velocity
+##Assumes rasters of current species distribution are in directory historical/[taxa group] and rasters of future projected species distribution are in directory future/[taxa group]/[gcm]
+
+library(SDMTools)
+library(raster)
+library(yaImpute)
+
+#create empty stack
+emptystack<-asc2dataframe(file=paste("historical","amphibians","A1.asc",sep="/"))
+emptystack<-rasterFromXYZ(cbind(emptystack$x,emptystack$y,emptystack$var.1))
+emptystack<-addLayer(emptystack,emptystack)
+emptystack<-dropLayer(emptystack,c(1,2))
+
+##create a list of files
+gcm.list<-list.files(path="future/mammals")
+taxalist<-c("amphibians","birds","mammals")
+taxa<-taxalist[1]
+
+for (i in 1:length(gcm.list)){
+	gcm <-gcm.list[i]
+	velstack<-emptystack
+	spplist<-list.files(path=paste("historical",taxa,sep="/"))
+
+	for (i in 1:length(spplist)){
+		present<-asc2dataframe(file=paste("historical",taxa,spplist[i],sep="/"))
+		future<-asc2dataframe(file=paste("future",taxa,gcm,spplist[i],sep="/"))
+		p.xy<-cbind(seq(1,length(present$x),1),present$x,present$y,present$var.1)
+		f.xy<-cbind(seq(1,length(future$x),1),future$x,future$y,future$var.1)
+		p.xy2<-p.xy[p.xy[,4]==1,1:3,drop=FALSE]
+		f.xy2<-f.xy[f.xy[,4]==1,1:3,drop=FALSE]
+		if(nrow(f.xy2)>0){
+	    		 d.ann <- as.data.frame(ann(
+	        		as.matrix(f.xy2[,-1,drop=FALSE]),
+	        		as.matrix(p.xy2[,-1,drop=FALSE]),
+	        		k=1, verbose=F)$knnIndexDist)
+	        		d1 <- cbind(p.xy2, round(sqrt(d.ann[,2])))
+	        		} else {
+	          		d1 <- cbind(p.xy2, rep(-9999,nrow(p.xy2)))
+	        		}
+		d1<-merge(p.xy,d1[,c(1,4)],by=1,all.x=TRUE)
+		sppvel<-rasterFromXYZ(d1[,c(2,3,5)])		
+		velstack<-addLayer(velstack,sppvel)
+      	}
+	
+	velstacktmp<-velstack
+	fun <- function(x) { x[x==-9999] <-NA; return(x) }
+	velstacktmp<-calc(velstacktmp,fun=fun)
+	velstackmean<-calc(velstacktmp,fun=mean,na.rm=TRUE)
+	velstackmean<-velstackmean/(1000*110)
+	writeRaster(velstackmean,filename=paste(taxa,gcm,"fwvelocitymean.asc",sep=""))
+}
+
+
+##Calculate backward biotic velocity
+
+##create a list of files
+gcm.list<-list.files(path="future/mammals")
+taxalist<-c("amphibians","birds","mammals")
+taxa<-taxalist[1]
+
+for (i in 1:length(gcm.list)){
+	gcm <-gcm.list[i]
+	velstack<-emptystack
+	spplist<-list.files(path=paste("historical",taxa,sep="/"))
+
+	for (i in 1:length(spplist)){
+		present<-asc2dataframe(file=paste("historical",taxa,spplist[i],sep="/"))
+		future<-asc2dataframe(file=paste("future",taxa,gcm,spplist[i],sep="/"))
+		p.xy<-cbind(seq(1,length(present$x),1),present$x,present$y,present$var.1)
+		f.xy<-cbind(seq(1,length(future$x),1),future$x,future$y,future$var.1)
+		p.xy2<-p.xy[p.xy[,4]==1,1:3,drop=FALSE]
+		f.xy2<-f.xy[f.xy[,4]==1,1:3,drop=FALSE]
+		if(nrow(f.xy2)>0){
+	    		 d.ann <- as.data.frame(ann(
+	        		as.matrix(p.xy2[,-1,drop=FALSE]),
+	        		as.matrix(f.xy2[,-1,drop=FALSE]),
+	        		k=1, verbose=F)$knnIndexDist)
+	        		d1 <- cbind(f.xy2, round(sqrt(d.ann[,2])))
+	        		} else {
+	          		print(spplist[i])
+	        		}
+		d1<-merge(f.xy,d1[,c(1,4),drop=FALSE],by=1,all.x=TRUE)
+		sppvel<-rasterFromXYZ(d1[,c(2,3,5)])		
+		velstack<-addLayer(velstack,sppvel)
+      	}
+	
+	velstackmean<-calc(velstack,fun=mean,na.rm=TRUE) 
+	velstackmean<-velstackmean/(1000*110)
+	writeRaster(velstackmean,filename=paste(taxa,gcm,"bwvelocitymean.asc",sep=""),overwrite=TRUE)
+}
+

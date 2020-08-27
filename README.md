@@ -3,4 +3,4 @@
 
 **Conducting Species Distribution Models under different climate velocities with R Wallace package** 
 
-**Climate velocity files from http://climexp.knmi.nl/**
+**Climate velocity files from TBD**
